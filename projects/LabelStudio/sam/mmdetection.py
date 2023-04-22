@@ -77,17 +77,25 @@ class MMDetection(LabelStudioMLBase):
         #     self.parsed_label_config, 'RectangleLabels', 'Image')
 
         self.labels_in_config = dict(
-                label=self.parsed_label_config['RectangleLabels']
+                label=self.parsed_label_config['KeyPointLabels']
             )
  
-        if 'RectangleLabels' in self.parsed_label_config:
+        # if 'RectangleLabels' in self.parsed_label_config:
 
-            self.parsed_label_config_RectangleLabels = {
-                'RectangleLabels':self.parsed_label_config['RectangleLabels']
+        #     self.parsed_label_config_RectangleLabels = {
+        #         'RectangleLabels':self.parsed_label_config['RectangleLabels']
+        #     }
+        #     self.from_name, self.to_name, self.value, self.labels_in_config = get_single_tag_keys(  # noqa E501
+        #         self.parsed_label_config_RectangleLabels, 'RectangleLabels', 'Image')
+
+        if 'BrushLabels' in self.parsed_label_config:
+
+            self.parsed_label_config_BrushLabels = {
+                'BrushLabels':self.parsed_label_config['BrushLabels']
             }
             self.from_name, self.to_name, self.value, self.labels_in_config = get_single_tag_keys(  # noqa E501
-                self.parsed_label_config_RectangleLabels, 'RectangleLabels', 'Image')
-
+                self.parsed_label_config_BrushLabels, 'BrushLabels', 'Image')
+        
         if 'BrushLabels' in self.parsed_label_config:
 
             self.parsed_label_config_BrushLabels = {
@@ -136,124 +144,76 @@ class MMDetection(LabelStudioMLBase):
 
     def predict(self, tasks, **kwargs):
 
-        predictor = self.PREDICTOR
+        predictor = PREDICTOR
 
-
-
-
-
+        results=[]
 
         assert len(tasks) == 1
         task = tasks[0]
         image_url = self._get_image_url(task)
         image_path = self.get_local_path(image_url)
-        print(image_path)
-        model_results = inference_detector(self.model,
-                                           image_path).pred_instances
-        results = []
-        all_scores = []
-        img_width, img_height = get_image_size(image_path)
-        print(f'>>> model_results: {model_results}')
-        print(f'>>> label_map {self.label_map}')
-        print(f'>>> self.model.dataset_meta: {self.model.dataset_meta}')
-        classes = self.model.dataset_meta.get('classes')
-        print(f'Classes >>> {classes}')
+
+
+        # getting the height and width of the image that you are annotating real-time 
+        height = kwargs['context']['result'][0]['original_height']
+        width = kwargs['context']['result'][0]['original_width']
+
+        # getting x and y coordinates of the keypoint
+        x = kwargs['context']['result'][0]['value']['x'] * width / 100
+        y = kwargs['context']['result'][0]['value']['y'] * height / 100
+        output_label = kwargs['context']['result'][0]['value']['labels'][0]
 
 
 
+        # image = cv2.imread(f"./{split}")
+        image = cv2.imread(image_path)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        for item in model_results:
-            # print(f'item >>>>> {item}')
-            bboxes, label, scores = item['bboxes'], item['labels'], item[
-                'scores']
-            score = float(scores[-1])
-            if score < self.score_thresh:
-                continue
-            # print(f'bboxes >>>>> {bboxes}')
-            # print(f'label >>>>> {label}')
-            output_label = classes[list(self.label_map.get(label, label))[0]]
-            # print(f'>>> output_label: {output_label}')
-            if output_label not in self.labels_in_config:
-                print(output_label + ' label not found in project config.')
-                continue
-
-            for bbox in bboxes:
-                bbox = list(bbox)
-                if not bbox:
-                    continue
-
-                x, y, xmax, ymax = bbox[:4]
-
-
-                # image = cv2.imread(f"./{split}")
-                image = cv2.imread(image_path)
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-                # retriving predictions from SAM. For more info, look at Facebook's SAM docs
-                predictor.set_image(image)
+        # retriving predictions from SAM. For more info, look at Facebook's SAM docs
+        predictor.set_image(image)
 
 
 
-                # transformed_boxes = predictor.transform.apply_boxes_torch(
-                #     bbox, image.shape[:2])
-                # transformed_boxes = transformed_boxes.to(predictor.model.device)
+        # transformed_boxes = predictor.transform.apply_boxes_torch(
+        #     bbox, image.shape[:2])
+        # transformed_boxes = transformed_boxes.to(predictor.model.device)
 
-                # masks, _, _ = sam_model.predict_torch(
-                #     point_coords=None,
-                #     point_labels=None,
-                #     boxes=transformed_boxes,
-                #     multimask_output=False)
-
-                masks, scores, logits = predictor.predict(
-                    # point_coords=np.array([[int((x+xmax)/2), int((y+ymax)/2)]]),
-                    box=np.array([x.cpu() for x in bbox[:4]]),
-                    point_labels=np.array([1]),
-                    multimask_output=False,
-                )
-                mask = masks[0].astype(np.uint8) # each mask has shape [H, W]
-                # converting the mask from the model to RLE format which is usable in Label Studio
-                mask = mask * 255
-                rle = brush.mask2rle(mask)
-                results.append({
-                    "from_name": self.from_name_BrushLabels,
-                    "to_name": self.to_name_BrushLabels,
-                    # "original_width": width,
-                    # "original_height": height,
-                    # "image_rotation": 0,
-                    "value": {
-                        "format": "rle",
-                        "rle": rle,
-                        "brushlabels": [output_label],
-                    },
-                    "type": "brushlabels",
-                    "id": ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.ascii_lowercase + string.digits)), # creates a random ID for your label every time
-                    "readonly": False,
-                })
+        # masks, _, _ = sam_model.predict_torch(
+        #     point_coords=None,
+        #     point_labels=None,
+        #     boxes=transformed_boxes,
+        #     multimask_output=False)
 
 
-
-                results.append({
-                    'from_name': self.from_name,
-                    'to_name': self.to_name,
-                    'type': 'rectanglelabels',
-                    'value': {
-                        'rectanglelabels': [output_label],
-                        'x': float(x) / img_width * 100,
-                        'y': float(y) / img_height * 100,
-                        'width': (float(xmax) - float(x)) / img_width * 100,
-                        'height': (float(ymax) - float(y)) / img_height * 100
-                    },
-                    'score': score
-                })
-                all_scores.append(score)
-
-
-        avg_score = sum(all_scores) / max(len(all_scores), 1)
-        # print(f'>>> RESULTS: {results}')
+        masks, scores, logits = predictor.predict(
+            point_coords=np.array([[x, y]]),
+            # box=np.array([x.cpu() for x in bbox[:4]]),
+            point_labels=np.array([1]),
+            multimask_output=False,
+        )
+        mask = masks[0].astype(np.uint8) # each mask has shape [H, W]
+        # converting the mask from the model to RLE format which is usable in Label Studio
+        mask = mask * 255
+        rle = brush.mask2rle(mask)
+        results.append({
+            "from_name": self.from_name_BrushLabels,
+            "to_name": self.to_name_BrushLabels,
+            # "original_width": width,
+            # "original_height": height,
+            # "image_rotation": 0,
+            "value": {
+                "format": "rle",
+                "rle": rle,
+                "brushlabels": [output_label],
+            },
+            "type": "brushlabels",
+            "id": ''.join(random.SystemRandom().choice(string.ascii_uppercase + string.ascii_lowercase + string.digits)), # creates a random ID for your label every time
+            "readonly": False,
+        })
 
 
 
-        return [{'result': results, 'score': avg_score}]
+        return [{'result': results}]
 
 
 def json_load(file, int_keys=False):
